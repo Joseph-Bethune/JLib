@@ -3,7 +3,6 @@
 
 # Ignore Gradle build output directory
 build
-.gitattributes
 .idea/.name
 .idea/compiler.xml
 .idea/gradle.xml
@@ -11,8 +10,3 @@ build
 .idea/misc.xml
 .idea/uiDesigner.xml
 .idea/workspace.xml
-gradle/wrapper/gradle-wrapper.jar
-gradle/wrapper/gradle-wrapper.properties
-gradlew
-gradlew.bat
-settings.gradle
