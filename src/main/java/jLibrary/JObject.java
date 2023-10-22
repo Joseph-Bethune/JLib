@@ -21,7 +21,7 @@ import java.util.function.Predicate;
 import static jLibrary.miscFunctions.MiscFunctions.*;
 
 /**
- * This class is the root of the jLib package.
+ * This class is the root of the jLib library.
  * <br>
  * It is meant to be a general purpose data storage class that allows for easy conversion of
  * complex and simple data to and from strings.
