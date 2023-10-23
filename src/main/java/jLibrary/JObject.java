@@ -467,11 +467,7 @@ public class JObject
             return null;
         }
 
-        HashMap<String, JObject> map = getSubObjects();
-        if(map != null){
-            return map.get(key);
-        }
-        return null;
+        return getValue(key);
     }
 
     @Override
@@ -480,11 +476,9 @@ public class JObject
             return null;
         }
 
-        HashMap<String, JObject> map = getSubObjects();
-        if(map != null){
-            return map.put(key, convertToJObject(value));
-        }
-        return null;
+        JObject previousValue = getValue(key);
+        setValue(key, value);
+        return previousValue;
     }
 
     @Override
@@ -526,7 +520,7 @@ public class JObject
     @Override
     public ArrayList<JObject> values() {
         if(isPrimitive()){
-            return new ArrayList<>(List.of(this));
+            return new ArrayList<>();
         }
         else{
             HashMap<String, JObject> map = getSubObjects();
@@ -1546,42 +1540,54 @@ public class JObject
     // region retrieving the values of sub objects
 
     /**
-     * Returns the JObject that is referenced as a sub-object under the given parameter name
-     * @param parameterName String : the parameter name of the sub-object
-     * @return JObject : returns the sub-object referenced by the given parameter name
+     * Returns the JObject that is referenced as a sub-object under the given parameter name.
+     * Set typed JObjects will yield a deep copy of the sub-object rather than the object itself.
+     * @param parameterName Object : the parameter name of the sub-object. Strings are preferred.
      */
-    public JObject getValue(String parameterName){
+    public JObject getValue(Object parameterName){
         if(isPrimitive()) {
             return null;
         }
+
+        String key = null;
+        if(parameterName instanceof CharSequence var){
+            key = var.toString();
+        }
+        else{
+            try{
+                key = parameterName.toString();
+            }
+            catch (Exception e){
+                throw new RuntimeException("Couldn't extract string from parameterName.");
+            }
+        }
+
         if(getType().isSet()) {
             try {
-                return getSubObjects().getOrDefault(parameterName, null).clone();
+                return getSubObjects().getOrDefault(key, null).clone();
             }
             catch (NullPointerException var){
                 return null;
             }
         }
         else {
-            return getSubObjects().getOrDefault(parameterName, null);
+            return getSubObjects().getOrDefault(key, null);
         }
     }
 
     /**
-     * In some cases, the sub-object are stored under numeric parameter names (such as with lists or sets). This
-     * function allows the retrieval of such objects.
+     * Returns the JObject that is referenced as a sub-object under the given index.
+     * Set typed JObjects will yield a deep copy of the sub-object rather than the object itself.
      * @param index int : the parameter name of the sub-object as an integer
-     * @return JObject : returns the sub-object referenced by the given integer
      */
     public JObject getValue(int index){
         return getValue(Integer.toString(index));
     }
 
     /**
-     * In some cases, the sub-object are stored under numeric parameter names (such as with lists or sets). This
-     * function allows the retrieval of such objects.
+     * Returns the JObject that is referenced as a sub-object under the given index.
+     * Set typed JObjects will yield a deep copy of the sub-object rather than the object itself.
      * @param index long : the parameter name of the sub-object as an integer
-     * @return JObject : returns the sub-object referenced by the given integer
      */
     public JObject getValue(long index){
         return getValue(Long.toString(index));
@@ -1618,9 +1624,22 @@ public class JObject
         return this;
     }
 
-    private JObject setValue_prv(String parameterName, JObject newValue)
+    private JObject setValue_prv(Object parameterName, JObject newValue)
             throws UnrecognizedSymbolsException, IllegalArgumentException, WrongExecutionTypeException
     {
+
+        String key = null;
+        if(parameterName instanceof CharSequence var){
+            key = var.toString();
+        }
+        else{
+            try{
+                key = parameterName.toString();
+            }
+            catch (Exception e){
+                throw new RuntimeException("Couldn't extract string from parameterName.");
+            }
+        }
 
         if(getType().isSet()){
             throw new RuntimeException("Sets cannot be modified.");
@@ -1630,7 +1649,7 @@ public class JObject
             throw new WrongExecutionTypeException(getTypeName(), "Any non primitive excluding sets");
         }
 
-        return setValue_bypassSetLock(parameterName, newValue);
+        return setValue_bypassSetLock(key, newValue);
     }
 
     /**
@@ -1639,7 +1658,7 @@ public class JObject
      * Chainable method.
      * @return Returns this JObject after it has been modified.
      */
-    public JObject setValue(String parameterName, Object newValue)
+    public JObject setValue(Object parameterName, Object newValue)
             throws UnrecognizedSymbolsException, IllegalArgumentException, WrongExecutionTypeException {
         return setValue_prv(parameterName, convertToJObject(newValue));
     }
@@ -1657,7 +1676,7 @@ public class JObject
             return setValue_prv(Integer.toString(index) , convertToJObject(newValue));
         }
         else{
-            throw new RuntimeException("Can only add sub objects via an index to lists.");
+            throw new WrongExecutionTypeException(getTypeName(), ObjectTypes.List.name());
         }
     }
 
@@ -1674,7 +1693,7 @@ public class JObject
             return setValue_prv(Long.toString(index) , convertToJObject(newValue));
         }
         else{
-            throw new RuntimeException("Can only add sub objects via an index to lists.");
+            throw new WrongExecutionTypeException(getTypeName(), ObjectTypes.List.name());
         }
     }
 
@@ -2744,11 +2763,35 @@ public class JObject
 
     //region iterator function overrides
 
+    /**
+     * Returns an iterator of JObjects contained within this object.
+     * <br>
+     * If this object is a JObject of a primitive type, then the iterator will contain no elements.
+     * <br>
+     * If this object is a list or a set, then it will iterate over the objects in order of their index.
+     * <br>
+     * If this object is a set, then this will iterator over deep copies of each of the elements
+     * contained within this object.
+     * <br>
+     * If this object is any other type, of non-primitive JObject, then the order of sub-objects iterated over
+     * will be random.
+     */
     @Override
     public Iterator<JObject> iterator(){
-        if (!getType().isList() && !getType().isSet()) {
-            throw new WrongExecutionTypeException(getTypeName(), new ObjectTypes[]{ObjectTypes.List, ObjectTypes.Set});
+
+        ArrayList<JObject> children = new ArrayList<>();
+        if(isList() || isSet()){
+            for(int x = 0; x < size(); x += 1){
+                children.add(this.getValue(x));
+            }
         }
+        else if(isPrimitive()){
+            // do nothing, empty list
+        }
+        else{
+            children.addAll(List.of(this.getValues()));
+        }
+
         return new Iterator<JObject>() {
 
             private int currentIndex = 0;
@@ -2760,7 +2803,7 @@ public class JObject
 
             @Override
             public JObject next() {
-                return getValue(currentIndex++);
+                return children.get(currentIndex++);
             }
 
             @Override
@@ -2768,14 +2811,6 @@ public class JObject
                 throw new UnsupportedOperationException();
             }
         };
-    }
-
-    @Override
-    public void forEach(Consumer<? super JObject> action) {
-        if (!getType().isList() && !getType().isSet()) {
-            throw new WrongExecutionTypeException(getTypeName(), new ObjectTypes[]{ObjectTypes.List, ObjectTypes.Set});
-        }
-        Iterable.super.forEach(action);
     }
 
     // endregion
